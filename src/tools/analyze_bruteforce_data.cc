@@ -6,6 +6,7 @@
 #include <map>
 #include <posers/survive_reproject.h>
 #include <posers/sba_solver.h>
+#include <cmath>
 
 int main(int argc, char** argv) {
     std::ifstream fin(argv[1]);  //ifstream to read from
@@ -15,6 +16,8 @@ int main(int argc, char** argv) {
     std::map<size_t, double> error[2];
     std::map<size_t, size_t> cnt[2];
     std::map<size_t, double> error_map;
+
+    double best = INFINITY, worst = 0;
     while (std::getline(fin, line))
     {
         std::istringstream iss(line);
@@ -27,6 +30,9 @@ int main(int argc, char** argv) {
             error[(bool)(idx & (1 << i))][i] += err;
             cnt[(bool)(idx & (1 << i))][i]++;
         }
+
+        best = std::min(best, err);
+        worst = std::max(worst, err);
     }
 
     size_t recommended = 0;
@@ -47,5 +53,6 @@ int main(int argc, char** argv) {
     std::cerr << calib << std::endl;
     std::cerr << " which had " << error_map[recommended] << std::endl;
 
+    std::cerr << "Best was " << best << ", worst was " << worst << std::endl;
     return 0;
 }
