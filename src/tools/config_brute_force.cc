@@ -1,5 +1,4 @@
-#include <iostream>
-#include <libsurvive/survive.h>
+#include <survive.h>
 #include "posers/init_extras.h"
 #include "posers/sba_solver.h"
 

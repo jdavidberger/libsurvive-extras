@@ -16,7 +16,7 @@ void survive_calibration_options_config_apply(const survive_calibration_options_
 							 const FLT* input, FLT* output) { 
   FLT tmp[2]; // In case they try to do in place
   for(int i = 0;i < 2;i++) {
-    tmp[i] = option->enable[i] * (option->invert[i] ? -1 : 1) * input[!option->swap];
+    tmp[i] = option->enable[i] * (option->invert[i] ? -1 : 1) * input[i ^ option->swap];
   }
   for(int i = 0;i < 2;i++) {
     output[i] = tmp[i]; 
@@ -28,9 +28,9 @@ survive_calibration_config survive_calibration_config_create_from_idx(size_t v) 
   memset(&config, 0, sizeof(config));
     
   bool* _this = (bool*)&config;
-  size_t ov = v;
+
   for(size_t i = 0;i < sizeof(config);i++) {
-    _this[i] = (v & 1);
+    _this[i] = (bool)(v & 1);
     v = v >> 1;
   }
 
@@ -128,5 +128,11 @@ const survive_calibration_config *survive_calibration_default_config() {
         *def = survive_calibration_config_create_from_idx( 8673213 );
     }
     return def;
+}
+
+size_t survive_calibration_config_max_idx() {
+    survive_calibration_config cfg;
+    memset(&cfg, 0x1, sizeof(survive_calibration_config));
+    return survive_calibration_config_index(&cfg);
 }
 

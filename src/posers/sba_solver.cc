@@ -142,7 +142,7 @@ int sba_bruteforce_config_solver_cb(SurviveObject *so, PoserData *pd) {
     double bestError = INFINITY;
     survive_calibration_config bestConfigOptions;
     size_t bestIdx = 0;
-    size_t total = 1 << sizeof(survive_calibration_config);
+    size_t total = survive_calibration_config_max_idx() + 1;
     size_t unique_configs = 0;
     std::map<size_t, double> errorMap;
     

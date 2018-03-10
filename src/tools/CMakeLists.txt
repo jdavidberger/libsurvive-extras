@@ -2,3 +2,6 @@ include_directories( libsurvive )
 
 add_executable(config_brute_force config_brute_force.cc)
 target_link_libraries(config_brute_force solvers)
+
+add_executable(analyze_bruteforce_data analyze_bruteforce_data.cc)
+target_link_libraries(analyze_bruteforce_data solvers)
