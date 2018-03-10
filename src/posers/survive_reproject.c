@@ -132,7 +132,7 @@ const survive_calibration_config *survive_calibration_default_config() {
 	if (def == 0) {
 		def = malloc(sizeof(survive_calibration_config));
 		memset(def, 0, sizeof(survive_calibration_config));
-		*def = survive_calibration_config_create_from_idx(8673213);
+		*def = survive_calibration_config_create_from_idx(859);
 	}
 	return def;
 }
