@@ -5,4 +5,4 @@
 
 struct SurviveObject;
 
-int opencv_solver_poser_cb(SurviveObject* so, PoserData* pd);
+int opencv_solver_poser_cb(SurviveObject *so, PoserData *pd);

@@ -5,7 +5,6 @@
 #include <libsurvive/survive.h>
 
 void init_extras() {
-  RegisterDriver("PoserOpenCV", (void*)opencv_solver_poser_cb);
-  RegisterDriver("PoserSBA", (void*)sba_solver_poser_cb);
-  
+	RegisterDriver("PoserOpenCV", (void *)opencv_solver_poser_cb);
+	RegisterDriver("PoserSBA", (void *)sba_solver_poser_cb);
 }
