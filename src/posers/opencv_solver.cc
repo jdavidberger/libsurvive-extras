@@ -87,13 +87,13 @@ int opencv_solver_poser_cb(SurviveObject* so, PoserData* pd) {
                 auto err = cv::solvePnP(cal_objectPoints, cal_imagePoints, cameraMatrix, dist, rvec, tvec, false, CV_EPNP);
                 cv::Mat_<double> R;
                 cv::Rodrigues(rvec, R); // R is 3x3
-
+		/*
                 std::cerr << cal_imagePoints << std::endl;
                 std::cerr << cal_objectPoints << std::endl;
                 std::cerr << cameraMatrix << std::endl;
                 std::cerr << tvec << std::endl;
                 std::cerr << R << std::endl;
-
+		*/
                 for(size_t i = 0;i < cal_objectPoints.size();i++) {
                     auto& obj = cal_objectPoints[i];
                     cv::Vec3d pt = { cal_imagePoints[i].x, cal_imagePoints[i].y, 1 };
@@ -104,11 +104,11 @@ int opencv_solver_poser_cb(SurviveObject* so, PoserData* pd) {
 
                 R = R.t();  // rotation of inverse
                 tvec = -R * tvec; // translation of inverse
-
+		/*
                 std::cerr << dist << std::endl;
                 std::cerr << tvec << std::endl;
                 std::cerr << R << std::endl;
-
+		*/
                 so->ctx->bsd[lh].PositionSet = 1;
                 so->ctx->bsd[lh].Pose.Pos[0] = tvec[0][0];
                 so->ctx->bsd[lh].Pose.Pos[1] = tvec[0][1];

@@ -13,19 +13,6 @@
 #include "opencv_solver.h"
 #include "../redist/linmath.h"
 
-struct calib {
-    FLT phase[2] = {};
-    FLT tilt[2] = {};
-    FLT curve[2] = {};
-    FLT gibpha[2] = {};
-    FLT gibmag[2] = {};
-
-    void correct(FLT *in, FLT *out) const {
-        out[0] = in[0] + phase[0];
-        out[1] = in[1] + phase[1];
-    }
-};
-
 PoserDataFullScene * pdfs;
 
 cv::Mat_<double> matFromSurvivePose(const SurvivePose& pose) {
@@ -100,20 +87,8 @@ cv::Mat_<double> rotMatFromPose(const SurvivePose& pose) {
 }
 
 
-static double scale = 1.;
-static double fov = 120. / 180. * M_PI;
-static double fov_2 = fov / 2.;
-static size_t fakeImageSize = fov * scale;
-static double f = scale * sin(fov_2) / cos(fov_2) * fov_2;
-
-static cv::Mat cameraMatrix =
-        (cv::Mat_<double>(3,3)
-                <<  f, 0, 0,
-                0, f, 0,
-                0, 0, 1);
-
 struct ConfigOptions {
-    struct pairOptions {
+  struct pairOptions {
         bool swap = {};
         bool invert[2] = {};
         bool enable[2] = {};
@@ -168,10 +143,39 @@ struct ConfigOptions {
 	    v = v >> 1;
 	return v;
   }
-    
+
 };
 
-ConfigOptions config(57815);
+std::ostream& operator<<(std::ostream& o, const ConfigOptions::pairOptions& self)  {
+  o << "\t";
+  if(!self.enable[0] && !self.enable[1]) {
+    o << "disabled";
+    return o;
+  }
+
+  o << "swap: " << self.swap << std::endl;
+  for(int i = 0;i < 2;i++) {
+    if(self.enable[i]) {
+      o << "\tinvert[" << i << "]: " << self.invert[i];
+    } else {
+      o << "\t" << i << ": disabled";
+    }
+  }
+  return o;
+}
+
+std::ostream& operator<<(std::ostream& o, const ConfigOptions& self) {
+  o << "Index: " << self.index() << std::endl;
+  o << "Phase: " << std::endl << self.phase << std::endl;  
+  o << "Tilt: " << std::endl << self.tilt << std::endl;
+  o << "Curve: " << std::endl << self.curve << std::endl;
+  o << "gibPhase: " << std::endl << self.gibPhase << std::endl;
+  o << "gibMag: " << std::endl << self.gibMag << std::endl;
+  o << "gibUseSin: " << self.gibUseSin << std::endl;
+  return o;
+}
+
+ConfigOptions config(8673213);
 
 struct CameraParams {
     SurvivePose pose;
@@ -293,7 +297,7 @@ static double run_sba(ConfigOptions options, PoserDataFullScene * pdfs, SurviveO
 		 metric_function,
 		 nullptr, // jacobia of metric_func
 		 so, // user data
-		 50, // Max iterations
+		 max_iterations, // Max iterations
 		 0, // verbosity
 		 opts, // options
 		 info); // info
@@ -315,6 +319,9 @@ int sba_bruteforce_config_solver_cb(SurviveObject *so, PoserData *pd) {
     ConfigOptions bestConfigOptions;
     size_t bestIdx = 0;
     size_t total = 1 << sizeof(ConfigOptions);
+    size_t unique_configs = 0;
+    std::map<size_t, double> errorMap;
+    
     for(size_t i = 0;i < total;i++) {
       if(i % 1000000 == 0) {
 	std::cerr << ((double)i / total * 100) << "% complete" << std::endl;
@@ -323,9 +330,9 @@ int sba_bruteforce_config_solver_cb(SurviveObject *so, PoserData *pd) {
       config = ConfigOptions(i);
       if(i != config.index())
 	continue;
-
-      auto error = run_sba(config, pdfs, so);
-
+      unique_configs++;
+      auto error = run_sba(config, pdfs, so, 5);
+      errorMap[i] = error;
       if(error < bestError) {
 	bestError = error;
 	bestConfigOptions = config;
@@ -334,6 +341,16 @@ int sba_bruteforce_config_solver_cb(SurviveObject *so, PoserData *pd) {
       }
     }
 
+    std::cerr << "Ran " << unique_configs << std::endl;
+    std::cerr << "Best configuration setting is " << bestIdx << std::endl;
+    std::cerr << bestConfigOptions << std::endl;
+
+    FILE* f = fopen("error_map.csv", "w");
+    for(auto& m : errorMap) {
+      fprintf(f, "%lu, %.17g\n", m.first, m.second);
+    }
+    fclose(f);
+    
     return 0;
   }
   }
@@ -344,8 +361,9 @@ int sba_solver_poser_cb(SurviveObject *so, PoserData *pd) {
     switch (pd->pt) {
         case POSERDATA_FULL_SCENE: {
             pdfs = (PoserDataFullScene *) (pd);
-
+	    std::cerr << "Running sba with " << config << std::endl;
 	    auto error = run_sba(config, pdfs, so);
+	    std::cerr << "Average reproj error: " << error << std::endl;
             return 0;
         }
     }
