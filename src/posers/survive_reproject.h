@@ -21,16 +21,22 @@ extern "C" {
   bool gibUseSin;
   
 } survive_calibration_config;
-  
-  const survive_calibration_config* default_config();
+
+  void survive_calibration_options_config_apply(const survive_calibration_options_config* option,
+    const FLT* input, FLT* output);
+  const survive_calibration_config* survive_calibration_default_config();
 
   survive_calibration_config survive_calibration_config_create_from_idx(size_t v);  
   size_t survive_calibration_config_index(const survive_calibration_config* config);
   
-  void survive_reproject(int lighthouse, FLT* point3d);
-  void survive_reproject_from_pose(int lighthouse, const SurvivePose* pose, FLT* point3d);
-  void survive_reproject_from_pose_with_config(const SurviveContext* ctx, const survive_calibration_config* config,
-    int lighthouse, const SurvivePose* pose, const FLT* point3d, FLT* out);
+  void survive_reproject(const SurviveContext* ctx, int lighthouse, FLT* point3d, FLT* out);
+  void survive_reproject_from_pose(const SurviveContext* ctx, int lighthouse, const SurvivePose* pose, FLT* point3d, FLT* out);
+  void survive_reproject_from_pose_with_config(const SurviveContext* ctx,
+    const survive_calibration_config* config,
+    int lighthouse,
+    const SurvivePose* pose,
+    const FLT* point3d,
+    FLT* out);
 
 #ifdef __cplusplus
 }
