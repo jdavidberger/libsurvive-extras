@@ -29,7 +29,6 @@ var angles = {};
 var ctx;
 var canvas;
 function redrawCanvas(when) {
-	return true;
 	if (!ctx) {
 		canvas = document.getElementById("camcanvas");
 		ctx = canvas.getContext("2d");
@@ -132,10 +131,10 @@ $(function() {
 		if (obj.type === "pose" && obj.lighthouse === 1) {
 			if (objs[obj.tracker]) {
 				objs[obj.tracker].position.set(obj.position[0], obj.position[1], obj.position[2]);
-				objs[obj.tracker].quaternion.set(obj.quat[0], obj.quat[1], obj.quat[2], obj.quat[3]);
+				objs[obj.tracker].quaternion.set(obj.quat[1], obj.quat[2], obj.quat[3], obj.quat[0]);
 			}
 			axes.position.set(obj.position[0], obj.position[1], obj.position[2]);
-			axes.quaternion.set(obj.quat[0], obj.quat[1], obj.quat[2], obj.quat[3]);
+			axes.quaternion.set(obj.quat[1], obj.quat[2], obj.quat[3], obj.quat[0]);
 		} else if (obj.type === "lighthouse_pose") {
 			add_lighthouse(obj.lighthouse, obj.position, obj.quat);
 		} else if (obj.type === "tracker_calibration") {
