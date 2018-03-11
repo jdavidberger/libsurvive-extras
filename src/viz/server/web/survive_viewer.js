@@ -17,7 +17,7 @@ function DrawCoordinateSystem(x, y, z, qx, qy, qz, qr) {
 	}
 
 function add_lighthouse(idx, p, q) {
-	var lh = new THREE.AxesHelper(.25 + idx * 1);
+	var lh = new THREE.AxesHelper(1);
 	lh.position.fromArray(p);
 	lh.quaternion.fromArray([ q[1], q[2], q[3], q[0] ]);
 
@@ -29,6 +29,7 @@ var angles = {};
 var ctx;
 var canvas;
 function redrawCanvas(when) {
+	return true;
 	if (!ctx) {
 		canvas = document.getElementById("camcanvas");
 		ctx = canvas.getContext("2d");
@@ -103,7 +104,7 @@ function create_object(info) {
 
 	for (var idx in info.points) {
 		var p = info.points[idx];
-		var color = 0xFF0000; // / info.points.length * idx;
+		var color = 0xFFFFFF; // / info.points.length * idx;
 		if (idx == 10)
 			color = 0x00ff00;
 		if (idx == 12)
@@ -122,7 +123,9 @@ var timecode = {};
 $(function() {
 	var ws =
 		new WebSocket(((window.location.protocol === "https:") ? "wss://" : "ws://") + window.location.host + "/ws");
-	ws.onopen = function(evt) { ws.send("!"); } ws.onmessage = function(evt) {
+	ws.onopen = function(evt) { ws.send("!"); };
+
+	ws.onmessage = function(evt) {
 		var msg = evt.data;
 		var obj = JSON.parse(msg);
 		// console.log(obj);
@@ -148,7 +151,7 @@ $(function() {
 				scene.add(line);
 			} else {
 				var q = obj.accelgyro;
-				downAxes[obj.tracker].vertices[1].fromArray([ q[1], q[2], q[3], q[0] ]);
+				downAxes[obj.tracker].vertices[1].fromArray(q);
 				downAxes[obj.tracker].verticesNeedUpdate = true;
 			}
 

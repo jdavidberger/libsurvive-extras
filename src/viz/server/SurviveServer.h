@@ -8,6 +8,9 @@
 #include <Poco/Util/ServerApplication.h>
 #include <memory>
 
+struct SurviveObject;
+struct SurvivePose;
+
 struct SurviveWSServer_p;
 class SurviveServer : public Poco::Util::ServerApplication {
 	std::shared_ptr<SurviveWSServer_p> p;

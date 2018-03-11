@@ -10,9 +10,9 @@ void send_angle_info(struct SurviveObject *so, int sensor_id, int acode, uint32_
 	survive_default_angle_process(so, sensor_id, acode, timecode, length, angle, lh);
 	((SurviveServer *)so->ctx->user_ptr)->send_angle_info(so, sensor_id, acode, timecode, length, angle, lh);
 }
-void send_pose_info(SurviveObject *so, uint8_t lighthouse, FLT *pos, FLT *quat) {
-	survive_default_raw_pose_process(so, lighthouse, pos, quat);
-	((SurviveServer *)so->ctx->user_ptr)->send_pose_info(so, lighthouse, pos, quat);
+void send_pose_info(SurviveObject *so, uint8_t lighthouse, FLT *pos) {
+	survive_default_raw_pose_process(so, lighthouse, pos);
+	((SurviveServer *)so->ctx->user_ptr)->send_pose_info(so, lighthouse, pos, pos + 3);
 }
 
 void send_imu_info(SurviveObject *so, int mask, FLT *accelgyro, uint32_t timecode, int id) {

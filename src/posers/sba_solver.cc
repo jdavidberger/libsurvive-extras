@@ -4,16 +4,14 @@
 #endif
 
 #include "sba_solver.h"
-#include "../redist/linmath.h"
 #include "opencv_solver.h"
 #include "sba.h"
-#include "survive_reproject.h"
 #include <opencv2/core/types.hpp>
 #include <opencv2/opencv.hpp>
-#include <poser.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <vector>
+
+extern "C" {
+#include "../redist/linmath.h"
+}
 
 extern "C" int PoserCharlesSlow(SurviveObject *so, PoserData *pd);
 
@@ -53,6 +51,49 @@ struct sba_context {
 	PoserDataFullScene *pdfs;
 	SurviveObject *so;
 };
+
+static FLT gibf(bool useSin, FLT v) {
+	if (useSin)
+		return sin(v);
+	return cos(v);
+}
+
+void survive_reproject_from_pose_with_config(const SurviveContext *ctx, const survive_calibration_config *config,
+											 int lighthouse, const SurvivePose *pose, const FLT *pt, FLT *out) {
+	FLT invq[4];
+	quatgetreciprocal(invq, pose->Rot);
+
+	FLT tvec[3];
+	quatrotatevector(tvec, invq, pose->Pos);
+
+	FLT t_pt[3];
+	quatrotatevector(t_pt, invq, pt);
+	for (int i = 0; i < 3; i++)
+		t_pt[i] = t_pt[i] - tvec[i];
+
+	FLT x = -t_pt[0] / -t_pt[2];
+	FLT y = t_pt[1] / -t_pt[2];
+
+	double ang_x = atan(x);
+	double ang_y = atan(y);
+
+	const BaseStationData *bsd = &ctx->bsd[lighthouse];
+	double phase[2];
+	survive_calibration_options_config_apply(&config->phase, bsd->fcalphase, phase);
+	double tilt[2];
+	survive_calibration_options_config_apply(&config->tilt, bsd->fcaltilt, tilt);
+	double curve[2];
+	survive_calibration_options_config_apply(&config->curve, bsd->fcalcurve, curve);
+	double gibPhase[2];
+	survive_calibration_options_config_apply(&config->gibPhase, bsd->fcalgibpha, gibPhase);
+	double gibMag[2];
+	survive_calibration_options_config_apply(&config->gibMag, bsd->fcalgibmag, gibMag);
+
+	out[0] = ang_x + phase[0] + tan(tilt[0]) * y + curve[0] * y * y +
+			 gibf(config->gibUseSin, gibPhase[0] + ang_x) * gibMag[0];
+	out[1] = ang_y + phase[1] + tan(tilt[1]) * x + curve[1] * x * x +
+			 gibf(config->gibUseSin, gibPhase[1] + ang_y) * gibMag[1];
+}
 
 void metric_function(int j, int i, double *aj, double *xij, void *adata) {
 	sba_context *ctx = static_cast<sba_context *>(adata);
@@ -94,7 +135,6 @@ static double run_sba(survive_calibration_config options,
 
 	if (so->ctx->bsd[0].PositionSet == 0 || so->ctx->bsd[1].PositionSet == 0) {
 		opencv_solver_poser_cb(so, (PoserData *)pdfs);
-
 		// PoserCharlesSlow(so, (PoserData *)pdfs);
 	}
 
@@ -138,6 +178,7 @@ static double run_sba(survive_calibration_config options,
 	so->ctx->bsd[0].Pose = camera_params[0];
 	so->ctx->bsd[1].Pose = camera_params[1];
 
+	// Docs say info[0] should be divided by meas; I don't buy it really...
 	std::cerr << info[0] / meas.size() * 2 << " original reproj error" << std::endl;
 
 	return info[1] / meas.size() * 2;

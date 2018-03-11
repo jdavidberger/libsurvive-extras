@@ -11,7 +11,9 @@
 #include <libsurvive/poser.h>
 #include <libsurvive/survive.h>
 
+extern "C" {
 #include "../redist/linmath.h"
+};
 
 struct sensor_data_t {
 	uint32_t timecode = 0;
@@ -93,98 +95,97 @@ void quatfrommatrix33(cv::Mat_<double> &m, double *q) {
 	}
 }
 
+static int opencv_solver_fullscene(SurviveObject *so, PoserDataFullScene *pdfs) {
+	for (int lh = 0; lh < 2; lh++) {
+		std::vector<cv::Point3f> cal_objectPoints;
+		std::vector<cv::Point2f> cal_imagePoints;
+
+		for (size_t i = 0; i < so->nr_locations; i++) {
+			auto &lengths = pdfs->lengths[i][lh];
+			auto &pt = pdfs->angles[i][lh];
+			if (lengths[0] < 0 || lengths[1] < 0)
+				continue;
+
+			cal_imagePoints.emplace_back(tan(pt[0]) * scale, tan(pt[1]) * scale);
+
+			cal_objectPoints.emplace_back(so->sensor_locations[i * 3 + 0], so->sensor_locations[i * 3 + 1],
+										  so->sensor_locations[i * 3 + 2]);
+		}
+
+		std::cerr << "Solving for " << cal_imagePoints.size() << " correspondents" << std::endl;
+		if (cal_imagePoints.size() <= 4) {
+			auto ctx = so->ctx;
+			SV_INFO("Can't solve for only %lu points on lh %d\n", cal_imagePoints.size(), lh);
+			continue;
+		}
+		cv::Mat_<double> dist, rvec, tvec;
+		std::vector<int> inliers;
+		/*
+						cv::solvePnPRansac(cal_objectPoints,
+		   cal_imagePoints, cameraMatrix, dist, rvec, tvec,
+										   false, 100, 1., .99, inliers);
+		*/
+		auto err = cv::solvePnP(cal_objectPoints, cal_imagePoints, cameraMatrix, dist, rvec, tvec, false, CV_EPNP);
+		cv::Mat_<double> R;
+		cv::Rodrigues(rvec, R); // R is 3x3
+
+		for (size_t i = 0; i < cal_objectPoints.size(); i++) {
+			auto &obj = cal_objectPoints[i];
+			cv::Vec3d pt = {cal_imagePoints[i].x, cal_imagePoints[i].y, 1};
+
+			cv::Vec3d v = cv::Mat(cameraMatrix * (R * cv::Mat_<double>(obj) + tvec));
+			std::cerr << cv::norm(pt - (v / v[2])) << std::endl;
+		}
+
+		R = R.t();		  // rotation of inverse
+		tvec = -R * tvec; // translation of inverse
+
+		// Rotate to be vivian -- coordinates. This means towards the object is
+		// backwards to Z
+		/*R = R * (cv::Mat_<double>(3, 3) <<
+							   -1, 0, 0,
+							   0, 1, 0,
+							   0, 0, -1);
+*/
+		cv::Vec3d pt = {0, 0, 1};
+
+		so->ctx->bsd[lh].PositionSet = 1;
+		so->ctx->bsd[lh].Pose.Pos[0] = tvec[0][0];
+		so->ctx->bsd[lh].Pose.Pos[1] = tvec[0][1];
+		so->ctx->bsd[lh].Pose.Pos[2] = tvec[0][2];
+
+		FLT tmp[4];
+		quatfrommatrix33(R, tmp);
+
+		const FLT rt[4] = {0, 0, 1, 0};
+		quatrotateabout(so->ctx->bsd[lh].Pose.Rot, tmp, rt);
+	}
+
+	return 0;
+}
+
+std::map<size_t, PoserDataLight> stored_data[NUM_LIGHTHOUSES];
+
+void add_stored_data(PoserDataLight *lightData) {
+	// stored_data[lightData->lh][lightData->sensor_id];
+}
+
 int opencv_solver_poser_cb(SurviveObject *so, PoserData *pd) {
 	switch (pd->pt) {
-	case POSERDATA_FULL_SCENE: {
-		auto pdfs = (PoserDataFullScene *)(pd);
-		for (int lh = 0; lh < 2; lh++) {
-			std::vector<cv::Point3f> cal_objectPoints;
-			std::vector<cv::Point2f> cal_imagePoints;
-
-			for (size_t i = 0; i < so->nr_locations; i++) {
-				auto &lengths = pdfs->lengths[i][lh];
-				auto &pt = pdfs->angles[i][lh];
-				if (lengths[0] < 0 || lengths[1] < 0)
-					continue;
-
-				cal_imagePoints.emplace_back(tan(pt[0]) * scale,
-											 tan(pt[1]) * scale);
-
-				cal_objectPoints.emplace_back(so->sensor_locations[i * 3 + 0],
-											  so->sensor_locations[i * 3 + 1],
-											  so->sensor_locations[i * 3 + 2]);
-			}
-
-			std::cerr << "Solving for " << cal_imagePoints.size() << " correspondents" << std::endl;
-			if (cal_imagePoints.size() <= 4) {
-				auto ctx = so->ctx;
-				SV_INFO("Can't solve for only %lu points on lh %d\n",
-						cal_imagePoints.size(), lh);
-				continue;
-			}
-			cv::Mat_<double> dist, rvec, tvec;
-			std::vector<int> inliers;
-			/*
-							cv::solvePnPRansac(cal_objectPoints,
-			   cal_imagePoints, cameraMatrix, dist, rvec, tvec,
-											   false, 100, 1., .99, inliers);
-			*/
-			auto err =
-				cv::solvePnP(cal_objectPoints, cal_imagePoints, cameraMatrix,
-							 dist, rvec, tvec, false, CV_EPNP);
-			cv::Mat_<double> R;
-			cv::Rodrigues(rvec, R); // R is 3x3
-									/*
-											std::cerr << cal_imagePoints << std::endl;
-											std::cerr << cal_objectPoints << std::endl;
-											std::cerr << cameraMatrix << std::endl;
-											std::cerr << tvec << std::endl;
-											std::cerr << R << std::endl;
-									*/
-			for (size_t i = 0; i < cal_objectPoints.size(); i++) {
-				auto &obj = cal_objectPoints[i];
-				cv::Vec3d pt = {cal_imagePoints[i].x, cal_imagePoints[i].y, 1};
-
-				cv::Vec3d v =
-					cv::Mat(cameraMatrix * (R * cv::Mat_<double>(obj) + tvec));
-				std::cerr << cv::norm(pt - (v / v[2])) << std::endl;
-			}
-
-			R = R.t();		  // rotation of inverse
-			tvec = -R * tvec; // translation of inverse
-
-							  /*
-									  std::cerr << dist << std::endl;
-									  std::cerr << tvec << std::endl;
-									  std::cerr << R << std::endl;
-							  */
-
-			cv::Vec3d pt = {0, 0, 1};
-
-			std::cerr << cv::Mat(R * cv::Mat(pt) + tvec);
-
-			std::cerr << tvec << std::endl;
-
-			so->ctx->bsd[lh].PositionSet = 1;
-			so->ctx->bsd[lh].Pose.Pos[0] = tvec[0][0];
-			so->ctx->bsd[lh].Pose.Pos[1] = tvec[0][1];
-			so->ctx->bsd[lh].Pose.Pos[2] = tvec[0][2];
-
-			quatfrommatrix33(R, so->ctx->bsd[lh].Pose.Rot);
-			/*
-						auto qw = so->ctx->bsd[lh].Pose.Rot[0] =
-										  sqrt(1 + R[0][0] + R[1][1] + R[2][2])
-			   / 2;
-						so->ctx->bsd[lh].Pose.Rot[1] = (R[2][1] - R[1][2]) / 4.
-			   / qw;
-						so->ctx->bsd[lh].Pose.Rot[2] = (R[0][2] - R[2][0]) / 4.
-			   / qw;
-						so->ctx->bsd[lh].Pose.Rot[3] = (R[1][0] - R[0][1]) / 4.
-			   / qw;
-						*/
-		}
+	case POSERDATA_IMU: {
+		// Really should use this...
+		auto imuData = (PoserDataIMU *)pd;
+		break;
 	}
-		return 0;
+	case POSERDATA_LIGHT: {
+		auto lightData = (PoserDataLight *)pd;
+		add_stored_data(lightData);
+
+		break;
+	}
+	case POSERDATA_FULL_SCENE: {
+		return opencv_solver_fullscene(so, (PoserDataFullScene *)(pd));
+	}
 	}
 	return -1;
 }
