@@ -86,6 +86,7 @@ void survive_reproject_from_pose_with_config(
 	for (int i = 0; i < 3; i++)
 		t_pt[i] = t_pt[i] - tvec[i];
 
+	// If +Z is up, this is right
 	FLT x = t_pt[0] / t_pt[2];
 	FLT y = t_pt[1] / t_pt[2];
 
@@ -132,7 +133,7 @@ const survive_calibration_config *survive_calibration_default_config() {
 	if (def == 0) {
 		def = malloc(sizeof(survive_calibration_config));
 		memset(def, 0, sizeof(survive_calibration_config));
-		*def = survive_calibration_config_create_from_idx(859);
+		*def = survive_calibration_config_create_from_idx(0);
 	}
 	return def;
 }

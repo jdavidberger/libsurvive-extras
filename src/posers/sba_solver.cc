@@ -15,6 +15,8 @@
 #include <stdlib.h>
 #include <vector>
 
+extern "C" int PoserCharlesSlow(SurviveObject *so, PoserData *pd);
+
 std::ostream &operator<<(std::ostream &o,
 						 const survive_calibration_options_config &self) {
 	o << "\t";
@@ -92,6 +94,8 @@ static double run_sba(survive_calibration_config options,
 
 	if (so->ctx->bsd[0].PositionSet == 0 || so->ctx->bsd[1].PositionSet == 0) {
 		opencv_solver_poser_cb(so, (PoserData *)pdfs);
+
+		// PoserCharlesSlow(so, (PoserData *)pdfs);
 	}
 
 	std::vector<SurvivePose> camera_params;
@@ -107,7 +111,7 @@ static double run_sba(survive_calibration_config options,
 	opts[1] = SBA_STOP_THRESH;
 	opts[2] = SBA_STOP_THRESH;
 	opts[3] = SBA_STOP_THRESH;
-	opts[3] = max_reproj_error * meas.size();
+	opts[3] = SBA_STOP_THRESH; // max_reproj_error * meas.size();
 	opts[4] = 0.0;
 
 	sba_mot_levmar(
@@ -133,6 +137,8 @@ static double run_sba(survive_calibration_config options,
 	so->ctx->bsd[1].PositionSet = 1;
 	so->ctx->bsd[0].Pose = camera_params[0];
 	so->ctx->bsd[1].Pose = camera_params[1];
+
+	std::cerr << info[0] / meas.size() * 2 << " original reproj error" << std::endl;
 
 	return info[1] / meas.size() * 2;
 }
