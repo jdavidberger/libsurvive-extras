@@ -8,56 +8,14 @@
 #include <opencv2/calib3d.hpp>
 #include <opencv2/opencv.hpp>
 
-#include <libsurvive/poser.h>
-#include <libsurvive/survive.h>
+#include <poser.h>
+#include <survive.h>
 
 extern "C" {
 #include "../redist/linmath.h"
 };
 
-struct sensor_data_t {
-	uint32_t timecode = 0;
-	double angle = 0;
-	double length = 0;
-
-	sensor_data_t() {}
-
-	sensor_data_t(uint32_t timecode, double length, double angle)
-		: timecode(timecode), angle(angle), length(length) {}
-};
-
-// LH, sensor_id, acode
-
-std::vector<std::vector<cv::Point3f>> listOfobjectPoints[2];
-std::vector<std::vector<cv::Point2f>> listOfimagePoints[2];
-
-double scale = 1.;
-double fov = 120. / 180. * M_PI;
-double fov_2 = fov / 2.;
-size_t fakeImageSize = fov * scale;
-double f = 1;  // scale * cos(fov_2) / sin(fov_2) * fov_2;
-double cx = 0; // scale * fov_2,
-double cy = cx;
-
-cv::Mat cameraMatrix = (cv::Mat_<double>(3, 3) << f, 0, cx, 0, f, cy, 0, 0, 1);
-
-/*
-void generateCameraMatrix(int lh) {
-	cv::Mat dist, rvecs, tvecs;
-
-	cv::calibrateCamera(listOfobjectPoints[lh], listOfimagePoints[lh],
-cv::Size(fakeImageSize, fakeImageSize), cameraMatrix[lh], dist, rvecs, tvecs,
-CV_CALIB_USE_INTRINSIC_GUESS | CV_CALIB_FIX_ASPECT_RATIO |
-CV_CALIB_FIX_PRINCIPAL_POINT);
-	std::cerr << cameraMatrix[lh] << std::endl << std::endl;
-	std::cerr << dist << std::endl << std::endl;
-	std::cerr << rvecs<< std::endl << std::endl;
-	std::cerr << tvecs<< std::endl << std::endl;
-
-}
-*/
-
-void quatfrommatrix33(cv::Mat_<double> &m, double *q) {
+static void quatfrommatrix33(cv::Mat_<double> &m, double *q) {
 	auto m00 = m(0, 0), m11 = m(1, 1), m22 = m(2, 2), m21 = m(2, 1), m12 = m(1, 2), m02 = m(0, 2), m20 = m(2, 0),
 		 m10 = m(1, 0), m01 = m(0, 1);
 
@@ -106,7 +64,7 @@ static int opencv_solver_fullscene(SurviveObject *so, PoserDataFullScene *pdfs) 
 			if (lengths[0] < 0 || lengths[1] < 0)
 				continue;
 
-			cal_imagePoints.emplace_back(tan(pt[0]) * scale, tan(pt[1]) * scale);
+			cal_imagePoints.emplace_back(tan(pt[0]), tan(pt[1]));
 
 			cal_objectPoints.emplace_back(so->sensor_locations[i * 3 + 0], so->sensor_locations[i * 3 + 1],
 										  so->sensor_locations[i * 3 + 2]);
@@ -119,44 +77,32 @@ static int opencv_solver_fullscene(SurviveObject *so, PoserDataFullScene *pdfs) 
 			continue;
 		}
 		cv::Mat_<double> dist, rvec, tvec;
-		std::vector<int> inliers;
+
+		static cv::Mat_<double> identity = cv::Mat_<double>::eye(3, 3);
+		cv::solvePnP(cal_objectPoints, cal_imagePoints, identity, dist, rvec, tvec, false, CV_EPNP);
 		/*
-						cv::solvePnPRansac(cal_objectPoints,
-		   cal_imagePoints, cameraMatrix, dist, rvec, tvec,
-										   false, 100, 1., .99, inliers);
-		*/
-		auto err = cv::solvePnP(cal_objectPoints, cal_imagePoints, cameraMatrix, dist, rvec, tvec, false, CV_EPNP);
+				std::vector<int> inliers;
+
+							cv::solvePnPRansac(cal_objectPoints,
+			   cal_imagePoints, cameraMatrix, dist, rvec, tvec,
+											   false, 100, 1., .99, inliers);
+			*/
+
 		cv::Mat_<double> R;
 		cv::Rodrigues(rvec, R); // R is 3x3
 
-		for (size_t i = 0; i < cal_objectPoints.size(); i++) {
-			auto &obj = cal_objectPoints[i];
-			cv::Vec3d pt = {cal_imagePoints[i].x, cal_imagePoints[i].y, 1};
-
-			cv::Vec3d v = cv::Mat(cameraMatrix * (R * cv::Mat_<double>(obj) + tvec));
-			std::cerr << cv::norm(pt - (v / v[2])) << std::endl;
-		}
-
-		R = R.t();		  // rotation of inverse
-		tvec = -R * tvec; // translation of inverse
-
-		// Rotate to be vivian -- coordinates. This means towards the object is
-		// backwards to Z
-		/*R = R * (cv::Mat_<double>(3, 3) <<
-							   -1, 0, 0,
-							   0, 1, 0,
-							   0, 0, -1);
-*/
-		cv::Vec3d pt = {0, 0, 1};
+		R = R.t();
+		tvec = -R * tvec;
 
 		so->ctx->bsd[lh].PositionSet = 1;
-		so->ctx->bsd[lh].Pose.Pos[0] = tvec[0][0];
-		so->ctx->bsd[lh].Pose.Pos[1] = tvec[0][1];
-		so->ctx->bsd[lh].Pose.Pos[2] = tvec[0][2];
 
+		for (size_t i = 0; i < 3; i++) {
+			so->ctx->bsd[lh].Pose.Pos[i] = tvec[0][i];
+		}
+
+		// Typical camera applications have Z facing forward; the vive is contrarian
 		FLT tmp[4];
 		quatfrommatrix33(R, tmp);
-
 		const FLT rt[4] = {0, 0, 1, 0};
 		quatrotateabout(so->ctx->bsd[lh].Pose.Rot, tmp, rt);
 	}
