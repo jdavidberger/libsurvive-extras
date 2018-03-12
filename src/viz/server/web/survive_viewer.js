@@ -91,7 +91,7 @@ function redrawCanvas(when) {
 
 					ctx.fillStyle = "white";
 					ctx.font = "14px Arial";
-					ctx.fillText(id, x, y);
+					// ctx.fillText(id, x, y);
 
 					ctx.beginPath();
 					ctx.arc(x, y, 1, 0, 2 * Math.PI);

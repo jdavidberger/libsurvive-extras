@@ -1,6 +1,7 @@
 #define FLT double
 
 #include "SurviveServer.h"
+#include <chrono>
 #include <iostream>
 #include <libsurvive/survive.h>
 #include <posers/init_extras.h>
@@ -10,7 +11,18 @@ void send_angle_info(struct SurviveObject *so, int sensor_id, int acode, uint32_
 	survive_default_angle_process(so, sensor_id, acode, timecode, length, angle, lh);
 	((SurviveServer *)so->ctx->user_ptr)->send_angle_info(so, sensor_id, acode, timecode, length, angle, lh);
 }
+
+int count = 0;
+unsigned long last_display = 0;
 void send_pose_info(SurviveObject *so, uint8_t lighthouse, FLT *pos) {
+	unsigned long now = std::chrono::system_clock::now().time_since_epoch() / std::chrono::milliseconds(1);
+
+	if (now > last_display + 1000) {
+		std::cerr << "Pose at: " << ((double)count) << "hz" << std::endl;
+		count = 0;
+		last_display = now;
+	}
+	count++;
 	survive_default_raw_pose_process(so, lighthouse, pos);
 	((SurviveServer *)so->ctx->user_ptr)->send_pose_info(so, lighthouse, pos, pos + 3);
 }

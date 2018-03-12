@@ -228,7 +228,7 @@ static double run_sba_find_3d_structure(survive_calibration_config options, Pose
 	PoserData_poser_raw_pose_func(&pdl->hdr, so, 1, soLocation.Pos);
 
 	// Docs say info[0] should be divided by meas; I don't buy it really...
-	std::cerr << info[0] / meas.size() * 2 << " original reproj error" << std::endl;
+	// std::cerr << info[0] / meas.size() * 2 << " original reproj error" << std::endl;
 
 	return info[1] / meas.size() * 2;
 }
@@ -368,9 +368,6 @@ int sba_solver_poser_cb(SurviveObject *so, PoserData *pd) {
 
 		auto config = *survive_calibration_default_config();
 		auto error = run_sba_find_3d_structure(config, lightData, so);
-		if (error > 0) {
-			std::cerr << "Average reproj error: " << error << std::endl;
-		}
 		return 0;
 	}
 	case POSERDATA_FULL_SCENE: {
