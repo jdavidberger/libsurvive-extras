@@ -1,27 +1,40 @@
 var sphere, axes;
 
-function DrawCoordinateSystem(x, y, z, qx, qy, qz, qr) {
-	var quaternion = new THREE.Quaternion(qx, qy, qz, qr);
-
-	var i = new THREE.Vector3(1, 0, 0).applyQuaternion(quaternion);
-	var j = new THREE.Vector3(0, 1, 0).applyQuaternion(quaternion);
-	var k = new THREE.Vector3(0, 0, 1).applyQuaternion(quaternion);
-
-	var geom = new THREE.Geometry();
-	geom.vertices.push(new THREE.Vector3(x, y, z), new THREE.Vector3(x + i.x, y + i.y, z + i.z),
-					   new THREE.Vector3(x, y, z), new THREE.Vector3(x + j.x, y + j.y, z + j.z),
-					   new THREE.Vector3(x, y, z), new THREE.Vector3(x + k.x, y + k.y, z + k.z));
-
-	var lines = new THREE.LineSegments(geom, new THREE.LineBasicMaterial({color : 0x00ff00}));
-	scene.add(lines);
-	}
-
 function add_lighthouse(idx, p, q) {
-	var lh = new THREE.AxesHelper(1);
-	lh.position.fromArray(p);
-	lh.quaternion.fromArray([ q[1], q[2], q[3], q[0] ]);
+	var group = new THREE.Group();
 
-	scene.add(lh);
+	var lh = new THREE.AxesHelper(1);
+
+	group.position.fromArray(p);
+	group.quaternion.fromArray([ q[1], q[2], q[3], q[0] ]);
+
+	var height = 3;
+	var geometry = new THREE.ConeGeometry(Math.sin(1.0472) * height, height, 4, 1, true);
+	var material = new THREE.MeshBasicMaterial({
+		wireframe : true,
+		vertexColor : true,
+		color : 0x111111,
+		opacity : 0.08,
+		transparent : true,
+		blending : THREE.AdditiveBlending,
+		side : THREE.BothSides
+	});
+	var cone = new THREE.Mesh(geometry, material);
+
+	var lhBoxGeom = new THREE.CubeGeometry(.1, .1, .1);
+	var lhBoxMaterial = new THREE.MeshLambertMaterial({color : 0x111111, side : THREE.FrontSide});
+	var lhBox = new THREE.Mesh(lhBoxGeom, lhBoxMaterial);
+	group.add(lhBox);
+
+	cone.translateZ(-height / 2)
+	cone.rotateZ(Math.PI / 4)
+	cone.rotateX(Math.PI / 2)
+	// cone.position.z
+
+	group.add(cone);
+
+	group.add(lh);
+	scene.add(group);
 	// DrawCoordinateSystem(p[0], p[1], p[2], q[0], q[1], q[2], q[3]);
 	}
 var downAxes = {};
@@ -218,7 +231,7 @@ init() {
 	// var SCREEN_WIDTH = 400, SCREEN_HEIGHT = 300;
 	var SCREEN_WIDTH = window.innerWidth, SCREEN_HEIGHT = window.innerHeight;
 	// camera attributes
-	var VIEW_ANGLE = 45, ASPECT = SCREEN_WIDTH / SCREEN_HEIGHT, NEAR = 0.001, FAR = 2000;
+	var VIEW_ANGLE = 45, ASPECT = SCREEN_WIDTH / SCREEN_HEIGHT, NEAR = 0.01, FAR = 200;
 	// set up camera
 	camera = new THREE.PerspectiveCamera(VIEW_ANGLE, ASPECT, NEAR, FAR);
 	camera.up = new THREE.Vector3(0, 0, 1);
@@ -325,17 +338,13 @@ init() {
 	// without one of these, the scene's background color is determined by
 	// webpage background
 
-	// make sure the camera's "far" value is large enough so that it will render
-	// the skyBox!
 	var skyBoxGeometry = new THREE.CubeGeometry(50, 50, 50);
-	// BackSide: render faces from inside of the cube, instead of from outside
-	// (default).
-	var skyBoxMaterial = new THREE.MeshBasicMaterial({color : 0x9999ff, side : THREE.BackSide});
+	var skyBoxMaterial = new THREE.MeshBasicMaterial({color : 0x888888, side : THREE.BackSide});
 	var skyBox = new THREE.Mesh(skyBoxGeometry, skyBoxMaterial);
-	// scene.add(skyBox);
+	scene.add(skyBox);
 
 	// fog must be added to scene before first render
-	scene.fog = new THREE.FogExp2(0x9999ff, 0.00025);
+	scene.fog = new THREE.FogExp2(0xffffff, 0.025);
 }
 
 function animate() {

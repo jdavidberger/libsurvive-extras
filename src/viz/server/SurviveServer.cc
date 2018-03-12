@@ -90,13 +90,13 @@ struct SurviveWSServer_p : public std::enable_shared_from_this<SurviveWSServer_p
 		}
 	}
 
-	SurviveContext *ctx;
+	SurviveContext *ctx = 0x0;
 	void AddSocket(Poco::Net::HTTPServerRequest &request, Poco::Net::HTTPServerResponse &response) {
 		{
 			std::lock_guard<std::mutex> g(socket_mutex);
 			sockets.emplace_back(Poco::Net::WebSocket(request, response));
 		}
-		for (size_t i = 0; i < ctx->objs_ct; i++) {
+		for (size_t i = 0; ctx && i < ctx->objs_ct; i++) {
 			OnNewInfo(ctx->objs[i]);
 		}
 	}
