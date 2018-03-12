@@ -9,27 +9,27 @@
 void send_angle_info(struct SurviveObject *so, int sensor_id, int acode, uint32_t timecode, double length, double angle,
 					 uint32_t lh) {
 	survive_default_angle_process(so, sensor_id, acode, timecode, length, angle, lh);
-	((SurviveServer *)so->ctx->user_ptr)->send_angle_info(so, sensor_id, acode, timecode, length, angle, lh);
+	//((SurviveServer *)so->ctx->user_ptr)->send_angle_info(so, sensor_id, acode, timecode, length, angle, lh);
 }
 
 int count = 0;
 unsigned long last_display = 0;
-void send_pose_info(SurviveObject *so, uint8_t lighthouse, FLT *pos) {
+void send_pose_info(SurviveObject *so, uint8_t lighthouse, SurvivePose *pos) {
 	unsigned long now = std::chrono::system_clock::now().time_since_epoch() / std::chrono::milliseconds(1);
-
-	if (now > last_display + 1000) {
-		std::cerr << "Pose at: " << ((double)count) << "hz" << std::endl;
+	survive_default_raw_pose_process(so, lighthouse, pos);
+	if (now > last_display + 100) {
+		std::cerr << "Pose at: " << ((double)count * 10) << "hz" << std::endl;
 		count = 0;
 		last_display = now;
+		((SurviveServer *)so->ctx->user_ptr)->send_pose_info(so, lighthouse, &pos->Pos[0], &pos->Rot[0]);
 	}
 	count++;
-	survive_default_raw_pose_process(so, lighthouse, pos);
-	((SurviveServer *)so->ctx->user_ptr)->send_pose_info(so, lighthouse, pos, pos + 3);
+
 }
 
 void send_imu_info(SurviveObject *so, int mask, FLT *accelgyro, uint32_t timecode, int id) {
 	survive_default_imu_process(so, mask, accelgyro, timecode, id);
-	((SurviveServer *)so->ctx->user_ptr)->send_imu_info(so, mask, accelgyro, timecode, id);
+	//	((SurviveServer *)so->ctx->user_ptr)->send_imu_info(so, mask, accelgyro, timecode, id);
 }
 
 int main(int argc, char **argv) {

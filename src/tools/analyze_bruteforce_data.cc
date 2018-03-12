@@ -4,7 +4,7 @@
 #include <iostream>
 #include <map>
 #include <posers/sba_solver.h>
-#include <posers/survive_reproject.h>
+#include <survive_reproject.h>
 #include <sstream>
 #include <string>
 

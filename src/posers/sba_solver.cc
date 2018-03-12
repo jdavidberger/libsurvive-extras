@@ -107,9 +107,9 @@ void sba_set_cameras(SurviveObject *so, uint8_t lighthouse, SurvivePose *pose, v
 	SurvivePose *poses = (SurvivePose *)(user);
 	poses[lighthouse] = *pose;
 }
-void sba_set_position(SurviveObject *so, uint8_t lighthouse, FLT *new_pose, void *user) {
+void sba_set_position(SurviveObject *so, uint8_t lighthouse, SurvivePose *new_pose, void *user) {
 	auto *poses = (std::vector<SurvivePose> *)(user);
-	poses->push_back(*(SurvivePose *)new_pose);
+	poses->push_back(*new_pose);
 }
 extern "C" void *GetDriver(const char *name);
 
@@ -149,7 +149,7 @@ static double run_sba_find_3d_structure(survive_calibration_config options, Pose
 		soLocation.Rot[0] = 1;
 
 	{
-		auto subposer = config_read_str(so->ctx->global_config_values, "SBASeedPoser", "");
+		auto subposer = config_read_str(so->ctx->global_config_values, "SBASeedPoser", "PoserOpenCV");
 		auto driver = (PoserCB)GetDriver(subposer);
 		auto ctx = so->ctx;
 		if (driver) {
@@ -165,7 +165,8 @@ static double run_sba_find_3d_structure(survive_calibration_config options, Pose
 			if (locations.empty()) {
 				return -1;
 			} else if (false && locations.size() == 1) {
-				PoserData_poser_raw_pose_func(&pdl->hdr, so, pdl->lh, &locations[0].Pos[0]);
+				PoserData_poser_raw_pose_func(&pdl->hdr, so, pdl->lh,
+							      &locations[0]);
 				return -1;
 			} else {
 				for (auto &p : locations) {
@@ -225,7 +226,7 @@ static double run_sba_find_3d_structure(survive_calibration_config options, Pose
 				   info);		   // info
 
 	quatnormalize(soLocation.Rot, soLocation.Rot);
-	PoserData_poser_raw_pose_func(&pdl->hdr, so, 1, soLocation.Pos);
+	PoserData_poser_raw_pose_func(&pdl->hdr, so, 1, &soLocation);
 
 	// Docs say info[0] should be divided by meas; I don't buy it really...
 	// std::cerr << info[0] / meas.size() * 2 << " original reproj error" << std::endl;
@@ -248,7 +249,7 @@ static double run_sba(survive_calibration_config options,
 	camera_params.emplace_back(so->ctx->bsd[1].Pose);
 
 	if (true || so->ctx->bsd[0].PositionSet == 0 || so->ctx->bsd[1].PositionSet == 0) {
-		auto subposer = config_read_str(so->ctx->global_config_values, "SBASeedPoser", "");
+		auto subposer = config_read_str(so->ctx->global_config_values, "SBASeedPoser", "PoserOpenCV");
 		auto driver = (PoserCB)GetDriver(subposer);
 		auto ctx = so->ctx;
 		if (driver) {

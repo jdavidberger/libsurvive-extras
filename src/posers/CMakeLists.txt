@@ -7,8 +7,7 @@ list(APPEND srcs
 
 add_library(solvers ${srcs})
 
-target_link_libraries(solvers debug ${SURVIVE_DEBUG_LIBRARY} )
-target_link_libraries(solvers optimized ${SURVIVE_LIBRARY})
+target_link_libraries(solvers  ${SURVIVE_LIBRARY})
 target_link_libraries(solvers ${SBA_LIBRARY} lapack ${OpenCV_LIBS})
 
 add_executable(configuration_solver main.cc)

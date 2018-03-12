@@ -59,7 +59,7 @@ static SurvivePose solve_correspondence(SurviveObject *so, const std::vector<cv:
 	// std::cerr << "Solving for " << cal_imagePoints.size() << " correspondents" << std::endl;
 	if (cal_imagePoints.size() <= 4) {
 		auto ctx = so->ctx;
-		SV_INFO("Can't solve for only %lu points\n", cal_imagePoints.size());
+		SV_INFO("Can't solve for only %u points\n", cal_imagePoints.size());
 
 		return {};
 	}
@@ -161,7 +161,7 @@ int opencv_solver_poser_cb(SurviveObject *so, PoserData *pd) {
 
 			// scene->integratePose(txPose, lightData->timecode);
 			// txPose = scene->currentPose;
-			PoserData_poser_raw_pose_func(pd, so, lh, &txPose.Pos[0]);
+			PoserData_poser_raw_pose_func(pd, so, lh, &txPose);
 		}
 
 		return 0;
