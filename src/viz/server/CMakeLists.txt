@@ -17,7 +17,7 @@ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--no-as-needed")
 
 FIND_LIBRARY(SBA_D_LIB sbad)
 
-target_link_libraries(server ${SURVIVE_LIBRARY}  Poco::Foundation Poco::Util Poco::Net Poco::JSON Poco::XML
+target_link_libraries(server Poco::Foundation Poco::Util Poco::Net Poco::JSON Poco::XML
         Poco::Util ${OpenCV_LIBS} solvers)
 
 add_executable(server_main server_main.cc)

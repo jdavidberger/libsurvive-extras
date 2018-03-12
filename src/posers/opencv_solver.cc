@@ -1,4 +1,5 @@
 #include "opencv_solver.h"
+#include "PersistentScene.h"
 
 #ifndef USE_DOUBLE
 #define FLT double
@@ -9,7 +10,6 @@
 #include <opencv2/opencv.hpp>
 
 #include <libsurvive/poser.h>
-#include <poser.h>
 #include <survive.h>
 
 extern "C" {
@@ -53,7 +53,6 @@ static void quatfrommatrix33(cv::Mat_<double> &m, double *q) {
 		qz = 0.25 * S;
 	}
 }
-
 static SurvivePose solve_correspondence(SurviveObject *so, const std::vector<cv::Point3f> &cal_objectPoints,
 										const std::vector<cv::Point2f> &cal_imagePoints, bool cameraToWorld) {
 
@@ -128,81 +127,13 @@ static int opencv_solver_fullscene(SurviveObject *so, PoserDataFullScene *pdfs) 
 			continue;
 		}
 
-		so->ctx->bsd[lh].Pose = solve_correspondence(so, cal_objectPoints, cal_imagePoints, true);
-
-		so->ctx->bsd[lh].PositionSet = 1;
+		auto lighthouse = solve_correspondence(so, cal_objectPoints, cal_imagePoints, true);
+		PoserData_lighthouse_pose_func(&pdfs->hdr, so, lh, &lighthouse);
 	}
 	return 0;
 }
 
-struct PersistentScene {
-	uint32_t tolerance = 1500000;
-
-	// If "lengths[...]" < 0, means not a valid piece of sweep information.
-	FLT angles[SENSORS_PER_OBJECT][NUM_LIGHTHOUSES][2]; // 2 Axes  (Angles in LH space)
-	uint32_t timecode[SENSORS_PER_OBJECT][NUM_LIGHTHOUSES][2] = {};
-
-	PoserDataIMU lastimu;
-
-	uint32_t currentPoseTime;
-	SurvivePose currentPose;
-
-	void integratePose(const SurvivePose &newPose, uint32_t timecode_now) {
-		if (timecode_now - currentPoseTime > tolerance) {
-			currentPose = newPose;
-		} else {
-			for (int i = 0; i < 3; i++) {
-				currentPose.Pos[i] = currentPose.Pos[i] * .9 + newPose.Pos[i] * .1;
-			}
-
-			FLT tmp[4];
-
-			for (int i = 0; i < 4; i++) {
-				tmp[i] = currentPose.Rot[i] * .9 + newPose.Rot[i] * .1;
-			}
-
-			quatnormalize(currentPose.Rot, tmp);
-		}
-	}
-
-	void add(PoserDataLight *lightData) {
-		int axis = (lightData->acode & 1);
-		auto &data_timecode = timecode[lightData->sensor_id][lightData->lh][axis];
-		auto &angle = angles[lightData->sensor_id][lightData->lh][axis];
-
-		// if(lightData->timecode - data_timecode > 100000000) {
-		angle = lightData->angle;
-		/*} else {
-			angle = lightData->angle * .1 + angle * .9;
-		}*/
-		data_timecode = lightData->timecode;
-	}
-
-	void fill_correspondence(SurviveObject *so, int lh, std::vector<cv::Point3_<float>> &cal_objectPoints,
-							 std::vector<cv::Point_<float>> &cal_imagePoints, uint32_t timecode_now) {
-		cal_objectPoints.clear();
-		cal_imagePoints.clear();
-
-		for (size_t i = 0; i < so->nr_locations; i++) {
-			auto &data_timecode = timecode[i][lh];
-			auto &pt = angles[i][lh];
-			if (timecode_now - data_timecode[0] > tolerance || timecode_now - data_timecode[1] > tolerance)
-				continue;
-
-			cal_imagePoints.emplace_back(tan(pt[0]), tan(pt[1]));
-
-			cal_objectPoints.emplace_back(so->sensor_locations[i * 3 + 0], so->sensor_locations[i * 3 + 1],
-										  so->sensor_locations[i * 3 + 2]);
-		}
-	}
-};
-
 int opencv_solver_poser_cb(SurviveObject *so, PoserData *pd) {
-	PersistentScene *scene = static_cast<PersistentScene *>(so->PoserData);
-	if (!scene) {
-		so->PoserData = scene = new PersistentScene();
-	}
-
 	switch (pd->pt) {
 	case POSERDATA_IMU: {
 		// Really should use this...
@@ -210,18 +141,19 @@ int opencv_solver_poser_cb(SurviveObject *so, PoserData *pd) {
 		return 0;
 	}
 	case POSERDATA_LIGHT: {
+		auto &scene = GetSceneForSO(*so);
 		auto lightData = (PoserDataLight *)pd;
-		scene->add(lightData);
+		scene.add(so, lightData);
+
 		std::vector<cv::Point3_<float>> cal_objectPoints;
 		std::vector<cv::Point_<float>> cal_imagePoints;
 		int lh = lightData->lh;
-		scene->fill_correspondence(so, lh, cal_objectPoints, cal_imagePoints, lightData->timecode);
-		if (cal_imagePoints.size() > 4 && so->ctx->bsd[lh].PositionSet && lh == 1 && (lightData->acode & 1) == 0) {
+		scene.fill_correspondence(so, lh, cal_objectPoints, cal_imagePoints, lightData->timecode);
+		if (cal_imagePoints.size() > 4 && so->ctx->bsd[lh].PositionSet) {
 			auto pose = solve_correspondence(so, cal_objectPoints, cal_imagePoints, false);
 
 			SurvivePose txPose = {};
 			quatrotatevector(txPose.Pos, so->ctx->bsd[lh].Pose.Rot, pose.Pos);
-
 			for (int i = 0; i < 3; i++) {
 				txPose.Pos[i] += so->ctx->bsd[lh].Pose.Pos[i];
 			}
@@ -229,10 +161,9 @@ int opencv_solver_poser_cb(SurviveObject *so, PoserData *pd) {
 
 			// scene->integratePose(txPose, lightData->timecode);
 			// txPose = scene->currentPose;
-			if (so->ctx->rawposeproc) {
-				so->ctx->rawposeproc(so, lh, &txPose.Pos[0]);
-			}
+			PoserData_poser_raw_pose_func(pd, so, lh, &txPose.Pos[0]);
 		}
+
 		return 0;
 	}
 	case POSERDATA_FULL_SCENE: {

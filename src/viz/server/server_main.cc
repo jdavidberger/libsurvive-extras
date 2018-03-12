@@ -31,7 +31,7 @@ int main(int argc, char **argv) {
 
 		init_extras();
 		auto ctx = survive_init(0);
-
+		ctx->bsd[0].PositionSet = 0;
 		ctx->user_ptr = &app;
 		survive_install_raw_pose_fn(ctx, send_pose_info);
 		survive_install_angle_fn(ctx, send_angle_info);

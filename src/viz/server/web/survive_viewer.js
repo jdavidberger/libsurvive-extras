@@ -28,7 +28,15 @@ var downAxes = {};
 var angles = {};
 var ctx;
 var canvas;
+var oldDrawTime = 0;
+var lastWhen = {};
 function redrawCanvas(when) {
+	if (new Date().getTime() < oldDrawTime + 1000)
+		return;
+	if (lastWhen["TR0"] == when["TR0"])
+		return;
+
+	oldDrawTime = new Date().getTime();
 	if (!ctx) {
 		canvas = document.getElementById("camcanvas");
 		ctx = canvas.getContext("2d");
@@ -111,8 +119,12 @@ function create_object(info) {
 		var sensorMaterial = new THREE.MeshLambertMaterial({color : color});
 		var newSensor = new THREE.Mesh(sensorGeometry, sensorMaterial);
 		newSensor.position.set(p[0], p[1], p[2]);
+
 		group.add(newSensor);
 	}
+
+	var axes = new THREE.AxesHelper(1);
+	group.add(axes);
 
 	objs[info.tracker] = group;
 	scene.add(group);
@@ -128,30 +140,31 @@ $(function() {
 		var msg = evt.data;
 		var obj = JSON.parse(msg);
 		// console.log(obj);
-		if (obj.type === "pose" && obj.lighthouse === 1) {
+		if (obj.type === "pose") {
 			if (objs[obj.tracker]) {
 				objs[obj.tracker].position.set(obj.position[0], obj.position[1], obj.position[2]);
 				objs[obj.tracker].quaternion.set(obj.quat[1], obj.quat[2], obj.quat[3], obj.quat[0]);
 			}
-			axes.position.set(obj.position[0], obj.position[1], obj.position[2]);
-			axes.quaternion.set(obj.quat[1], obj.quat[2], obj.quat[3], obj.quat[0]);
+
 		} else if (obj.type === "lighthouse_pose") {
 			add_lighthouse(obj.lighthouse, obj.position, obj.quat);
 		} else if (obj.type === "tracker_calibration") {
-			create_object(obj);
+			create_object(obj, 0);
 		} else if (obj.type === "imu") {
-			if (!downAxes[obj.tracker]) {
-				downAxes[obj.tracker] = new THREE.Geometry();
-				downAxes[obj.tracker].vertices.push(
-					new THREE.Vector3(0, 0, 0),
-					new THREE.Vector3(obj.accelgyro[0], obj.accelgyro[1], obj.accelgyro[2]));
+			if (objs[obj.tracker]) {
+				if (!downAxes[obj.tracker]) {
+					downAxes[obj.tracker] = new THREE.Geometry();
+					downAxes[obj.tracker].vertices.push(
+						new THREE.Vector3(0, 0, 0),
+						new THREE.Vector3(obj.accelgyro[0], obj.accelgyro[1], obj.accelgyro[2]));
 
-				var line = new THREE.Line(downAxes[obj.tracker], new THREE.LineBasicMaterial({color : 0xffffff}));
-				scene.add(line);
-			} else {
-				var q = obj.accelgyro;
-				downAxes[obj.tracker].vertices[1].fromArray(q);
-				downAxes[obj.tracker].verticesNeedUpdate = true;
+					var line = new THREE.Line(downAxes[obj.tracker], new THREE.LineBasicMaterial({color : 0xffffff}));
+					objs[obj.tracker].add(line);
+				} else {
+					var q = obj.accelgyro;
+					downAxes[obj.tracker].vertices[1].fromArray(q);
+					downAxes[obj.tracker].verticesNeedUpdate = true;
+				}
 			}
 
 		} else if (obj.type === "angle") {
@@ -285,8 +298,6 @@ init() {
 
 	// create a set of coordinate axes to help orient user
 	//    specify length in pixels in each direction
-	axes = new THREE.AxesHelper(1);
-	scene.add(axes);
 
 	///////////
 	// FLOOR //
@@ -338,7 +349,7 @@ function update() {
 	// delta = change in time since last call (in seconds)
 	var delta = clock.getDelta();
 
-	controls.update();
+	// controls.update();
 	}
 
 function render() { renderer.render(scene, camera); }

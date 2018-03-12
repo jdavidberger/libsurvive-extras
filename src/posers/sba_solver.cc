@@ -9,8 +9,14 @@
 #include <opencv2/core/types.hpp>
 #include <opencv2/opencv.hpp>
 
+#include "PersistentScene.h"
+#include "libsurvive/poser.h"
+#include <libsurvive/poser.h>
+#include <survive.h>
+
 extern "C" {
 #include "../redist/linmath.h"
+#include "../src/survive_config.h"
 }
 
 extern "C" int PoserCharlesSlow(SurviveObject *so, PoserData *pd);
@@ -48,53 +54,9 @@ std::ostream &operator<<(std::ostream &o,
 
 struct sba_context {
 	survive_calibration_config calibration_config;
-	PoserDataFullScene *pdfs;
+	PoserData *pdfs;
 	SurviveObject *so;
 };
-
-static FLT gibf(bool useSin, FLT v) {
-	if (useSin)
-		return sin(v);
-	return cos(v);
-}
-
-void survive_reproject_from_pose_with_config(const SurviveContext *ctx, const survive_calibration_config *config,
-											 int lighthouse, const SurvivePose *pose, const FLT *pt, FLT *out) {
-	FLT invq[4];
-	quatgetreciprocal(invq, pose->Rot);
-
-	FLT tvec[3];
-	quatrotatevector(tvec, invq, pose->Pos);
-
-	FLT t_pt[3];
-	quatrotatevector(t_pt, invq, pt);
-	for (int i = 0; i < 3; i++)
-		t_pt[i] = t_pt[i] - tvec[i];
-
-	FLT x = -t_pt[0] / -t_pt[2];
-	FLT y = t_pt[1] / -t_pt[2];
-
-	double ang_x = atan(x);
-	double ang_y = atan(y);
-
-	const BaseStationData *bsd = &ctx->bsd[lighthouse];
-	double phase[2];
-	survive_calibration_options_config_apply(&config->phase, bsd->fcalphase, phase);
-	double tilt[2];
-	survive_calibration_options_config_apply(&config->tilt, bsd->fcaltilt, tilt);
-	double curve[2];
-	survive_calibration_options_config_apply(&config->curve, bsd->fcalcurve, curve);
-	double gibPhase[2];
-	survive_calibration_options_config_apply(&config->gibPhase, bsd->fcalgibpha, gibPhase);
-	double gibMag[2];
-	survive_calibration_options_config_apply(&config->gibMag, bsd->fcalgibmag, gibMag);
-
-	out[0] = ang_x + phase[0] + tan(tilt[0]) * y + curve[0] * y * y +
-			 gibf(config->gibUseSin, gibPhase[0] + ang_x) * gibMag[0];
-	out[1] = ang_y + phase[1] + tan(tilt[1]) * x + curve[1] * x * x +
-			 gibf(config->gibUseSin, gibPhase[1] + ang_y) * gibMag[1];
-}
-
 void metric_function(int j, int i, double *aj, double *xij, void *adata) {
 	sba_context *ctx = static_cast<sba_context *>(adata);
 	auto so = ctx->so;
@@ -122,6 +84,154 @@ void construct_input(const SurviveObject *so, PoserDataFullScene *pdfs,
 		}
 	}
 }
+void construct_input(const SurviveObject *so, PoserDataLight *pdl, std::vector<char> &vmask,
+					 std::vector<double> &meas) {
+	auto size = so->nr_locations * NUM_LIGHTHOUSES; // One set per lighthouse
+	vmask.resize(size, 0);
+
+	auto &scene = GetSceneForSO(*so);
+
+	for (size_t sensor = 0; sensor < so->nr_locations; sensor++) {
+		for (size_t lh = 0; lh < 2; lh++) {
+			if (scene.isStillValid(pdl->timecode, sensor, lh)) {
+				auto &a = scene.angles[sensor][lh];
+				vmask[sensor * NUM_LIGHTHOUSES + lh] = 1;
+				meas.push_back((a[0]));
+				meas.push_back((a[1]));
+			}
+		}
+	}
+}
+
+void sba_set_cameras(SurviveObject *so, uint8_t lighthouse, SurvivePose *pose, void *user) {
+	SurvivePose *poses = (SurvivePose *)(user);
+	poses[lighthouse] = *pose;
+}
+void sba_set_position(SurviveObject *so, uint8_t lighthouse, FLT *new_pose, void *user) {
+	auto *poses = (std::vector<SurvivePose> *)(user);
+	poses->push_back(*(SurvivePose *)new_pose);
+}
+extern "C" void *GetDriver(const char *name);
+
+void str_metric_function(int j, int i, double *bi, double *xij, void *adata) {
+	SurvivePose obj = *(SurvivePose *)bi;
+	auto sensor_idx = j >> 1;
+	auto lh = j & 1;
+
+	sba_context *ctx = static_cast<sba_context *>(adata);
+	auto so = ctx->so;
+
+	assert(lh < 2);
+	assert(sensor_idx < so->nr_locations);
+
+	quatnormalize(obj.Rot, obj.Rot);
+	FLT xyz[3];
+	ApplyPoseToPoint(xyz, obj.Pos, &so->sensor_locations[sensor_idx * 3]);
+
+	// std::cerr << "Processing " << sensor_idx << ", " << lh << std::endl;
+	auto &camera = so->ctx->bsd[lh].Pose;
+	survive_reproject_from_pose_with_config(so->ctx, &ctx->calibration_config, lh, &camera, xyz, xij);
+}
+static double run_sba_find_3d_structure(survive_calibration_config options, PoserDataLight *pdl, SurviveObject *so,
+										int max_iterations = 50, double max_reproj_error = 0.005) {
+	double *covx = nullptr;
+
+	std::vector<char> vmask;
+	std::vector<double> meas;
+	construct_input(so, pdl, vmask, meas);
+
+	if (so->ctx->bsd[0].PositionSet == 0 || so->ctx->bsd[1].PositionSet == 0) {
+		return -1;
+	}
+
+	SurvivePose soLocation = so->OutPose;
+	if (quatmagnitude(&soLocation.Rot[0]))
+		soLocation.Rot[0] = 1;
+
+	{
+		auto subposer = config_read_str(so->ctx->global_config_values, "SBASeedPoser", "");
+		auto driver = (PoserCB)GetDriver(subposer);
+		auto ctx = so->ctx;
+		if (driver) {
+			PoserData hdr = pdl->hdr;
+			pdl->hdr = {}; // Clear callback functions
+			pdl->hdr.pt = hdr.pt;
+			pdl->hdr.rawposeproc = sba_set_position;
+			std::vector<SurvivePose> locations;
+			pdl->hdr.userdata = &locations;
+			driver(so, &pdl->hdr);
+			pdl->hdr = hdr;
+
+			if (locations.empty()) {
+				return -1;
+			} else if (false && locations.size() == 1) {
+				PoserData_poser_raw_pose_func(&pdl->hdr, so, pdl->lh, &locations[0].Pos[0]);
+				return -1;
+			} else {
+				for (auto &p : locations) {
+					for (int i = 0; i < 7; i++) {
+						soLocation.Pos[i] += p.Pos[i];
+					}
+				}
+
+				for (int i = 0; i < 7; i++) {
+					soLocation.Pos[i] = soLocation.Pos[i] / locations.size();
+				}
+			}
+		} else {
+			SV_INFO("Not using a seed poser for SBA; results will likely be way off");
+			for (int i = 0; i < 2; i++) {
+				so->ctx->bsd[i].Pose = SurvivePose();
+				so->ctx->bsd[i].Pose.Rot[0] = 1.;
+			}
+		}
+		// opencv_solver_poser_cb(so, (PoserData *)pdl);
+		// PoserCharlesSlow(so, (PoserData *)pdl);
+	}
+
+	double opts[SBA_OPTSSZ] = {};
+	double info[SBA_INFOSZ] = {};
+
+	sba_context ctx = {options, &pdl->hdr, so};
+
+	opts[0] = SBA_INIT_MU;
+	opts[1] = SBA_STOP_THRESH;
+	opts[2] = SBA_STOP_THRESH;
+	opts[3] = SBA_STOP_THRESH;
+	opts[3] = SBA_STOP_THRESH; // max_reproj_error * meas.size();
+	opts[4] = 0.0;
+
+	/*
+	 * sba_str_levmar(const int n, const int ncon, const int m, char *vmask, double *p, const int pnp,
+		   double *x, double *covx, const int mnp,
+		   void (*proj)(int j, int i, double *bi, double *xij, void *adata),
+		   void (*projac)(int j, int i, double *bi, double *Bij, void *adata),
+		   void *adata, const int itmax, const int verbose, const double opts[SBA_OPTSSZ], double info[SBA_INFOSZ]);
+	 */
+	sba_str_levmar(1, // Number of 3d points
+				   0, // Number of 3d points to fix in spot
+				   NUM_LIGHTHOUSES * so->nr_locations, vmask.data(),
+				   soLocation.Pos, // Reads as the full pose though
+				   7,			   // pnp -- SurvivePose
+				   meas.data(),
+				   nullptr, // cov data
+				   2,		// mnp -- 2 points per image
+				   str_metric_function,
+				   nullptr,		   // jacobia of metric_func
+				   &ctx,		   // user data
+				   max_iterations, // Max iterations
+				   0,			   // verbosity
+				   opts,		   // options
+				   info);		   // info
+
+	quatnormalize(soLocation.Rot, soLocation.Rot);
+	PoserData_poser_raw_pose_func(&pdl->hdr, so, 1, soLocation.Pos);
+
+	// Docs say info[0] should be divided by meas; I don't buy it really...
+	std::cerr << info[0] / meas.size() * 2 << " original reproj error" << std::endl;
+
+	return info[1] / meas.size() * 2;
+}
 
 static double run_sba(survive_calibration_config options,
 					  PoserDataFullScene *pdfs, SurviveObject *so,
@@ -133,19 +243,38 @@ static double run_sba(survive_calibration_config options,
 	std::vector<double> meas;
 	construct_input(so, pdfs, vmask, meas);
 
-	if (so->ctx->bsd[0].PositionSet == 0 || so->ctx->bsd[1].PositionSet == 0) {
-		opencv_solver_poser_cb(so, (PoserData *)pdfs);
-		// PoserCharlesSlow(so, (PoserData *)pdfs);
-	}
-
 	std::vector<SurvivePose> camera_params;
 	camera_params.emplace_back(so->ctx->bsd[0].Pose);
 	camera_params.emplace_back(so->ctx->bsd[1].Pose);
 
+	if (true || so->ctx->bsd[0].PositionSet == 0 || so->ctx->bsd[1].PositionSet == 0) {
+		auto subposer = config_read_str(so->ctx->global_config_values, "SBASeedPoser", "");
+		auto driver = (PoserCB)GetDriver(subposer);
+		auto ctx = so->ctx;
+		if (driver) {
+			SV_INFO("Using %s seed poser for SBA", subposer);
+			PoserData hdr = pdfs->hdr;
+			pdfs->hdr = {}; // Clear callback functions
+			pdfs->hdr.pt = hdr.pt;
+			pdfs->hdr.lighthouseposeproc = sba_set_cameras;
+			pdfs->hdr.userdata = camera_params.data();
+			driver(so, &pdfs->hdr);
+			pdfs->hdr = hdr;
+		} else {
+			SV_INFO("Not using a seed poser for SBA; results will likely be way off");
+			for (int i = 0; i < 2; i++) {
+				so->ctx->bsd[i].Pose = SurvivePose();
+				so->ctx->bsd[i].Pose.Rot[0] = 1.;
+			}
+		}
+		// opencv_solver_poser_cb(so, (PoserData *)pdfs);
+		// PoserCharlesSlow(so, (PoserData *)pdfs);
+	}
+
 	double opts[SBA_OPTSSZ] = {};
 	double info[SBA_INFOSZ] = {};
 
-	sba_context ctx = {options, pdfs, so};
+	sba_context ctx = {options, &pdfs->hdr, so};
 
 	opts[0] = SBA_INIT_MU;
 	opts[1] = SBA_STOP_THRESH;
@@ -173,10 +302,8 @@ static double run_sba(survive_calibration_config options,
 		opts,			// options
 		info);			// info
 
-	so->ctx->bsd[0].PositionSet = 1;
-	so->ctx->bsd[1].PositionSet = 1;
-	so->ctx->bsd[0].Pose = camera_params[0];
-	so->ctx->bsd[1].Pose = camera_params[1];
+	PoserData_lighthouse_pose_func(&pdfs->hdr, so, 0, &camera_params[0]);
+	PoserData_lighthouse_pose_func(&pdfs->hdr, so, 1, &camera_params[1]);
 
 	// Docs say info[0] should be divided by meas; I don't buy it really...
 	std::cerr << info[0] / meas.size() * 2 << " original reproj error" << std::endl;
@@ -234,6 +361,18 @@ int sba_bruteforce_config_solver_cb(SurviveObject *so, PoserData *pd) {
 
 int sba_solver_poser_cb(SurviveObject *so, PoserData *pd) {
 	switch (pd->pt) {
+	case POSERDATA_LIGHT: {
+		auto &scene = GetSceneForSO(*so);
+		auto lightData = (PoserDataLight *)pd;
+		scene.add(so, lightData);
+
+		auto config = *survive_calibration_default_config();
+		auto error = run_sba_find_3d_structure(config, lightData, so);
+		if (error > 0) {
+			std::cerr << "Average reproj error: " << error << std::endl;
+		}
+		return 0;
+	}
 	case POSERDATA_FULL_SCENE: {
 		auto pdfs = (PoserDataFullScene *)(pd);
 		auto config = *survive_calibration_default_config();
