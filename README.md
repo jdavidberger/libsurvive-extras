@@ -59,7 +59,7 @@ From the light data, we can derive the angle on each sweep plane from (roughly) 
 
 This tracks loosely with that of a [pinhole camera model](https://docs.opencv.org/2.4/modules/calib3d/doc/camera_calibration_and_3d_reconstruction.html). *However*, it does not track exactly. In a typical application of PNP to pinhole cameras, you are given pixels for correspondence whereas here we have angles. This makes the math much simpler. 
 
-Whereas with a pinhole camera, you need to calibrate a camera matrix; which includes center point and focal length. There is no sensor lens in our case, which means there are no pixel values per se. However, if you imagine a plane exactly 1 meter (or whatever unit your 3d points are in) in front of the lighthouse, you can solve for where the line would intercept that plane from the given angle. 
+Whereas with a pinhole camera you need to calibrate a camera matrix; There is no sensor lens in our case, which means there are no pixel values per se. However, if you imagine a plane exactly 1 meter (or whatever unit your 3d points are in) in front of the lighthouse, you can solve for where the line would intercept that plane from the given angle. 
 
 Recall that 
 
@@ -68,7 +68,7 @@ tan(angle) = opposite / adjacent
 tan(angle) * adjacent = opposite 
 ```
 
-and since the adjacent line -- that of the center of the plane to the center of the lighthouse -- was imagine at 1 meter, the position for each coordinate is simply:
+and since the adjacent line -- that of the center of the plane to the center of the lighthouse -- was set at 1 meter, the position for each coordinate is simply:
 
 ```
 px = tan(ang_x)
@@ -76,6 +76,8 @@ py = tan(ang_y)
 ```
 
 Note that these aren't technically pixel values, but can effectively be used as such. Also note that since we defined our plane at 1m out, this is our focal length and the camera matrix is simply identity. 
+
+Typically PNP implementations will also allow you to model radial distortions and the like. While the lighthouses are not idealized systems, I somewhat doubt that the distortions seen in cameras track particularly closely with that of the lighthouse, so I recommend not using them at all.
 
 From that, we can turn all of our angles into effective 'pixel' values, and use any off the shelf pnp solver. This repo uses OpenCV's for convience. 
 
@@ -89,10 +91,10 @@ An important point to SBA is that it needs an OK solution to adjust for good res
 
 Since SBA models the whole system, the details for calibration and for tracked object position are different. For calibration, you declare the tracked object fixed at origin, and adjust for the position of the two lighthouses. This looks like a N 3d point, 2 camera setup, where N is the number of 3d points on the tracked object.
 
-For tracking, you want to leverage the idea that you know the rigid structure of the tracked object, and the exact position of the lighthouses, and you just want the pose of the tacked object. The way this is modeled here is that there is one pose for the tracked object, and effectively two cameras for each sensor location, all at known positions that aren't to be adjusted. 
+For tracking, you want to leverage the idea that you know the rigid structure of the tracked object, and the exact position of the lighthouses, and you just want the pose of the tracked object. The way this is modeled here is that there is one pose for the tracked object, and effectively two cameras for each sensor location, all at known positions that aren't to be adjusted. 
 
 Both approaches use the same reprojection function which is part of libsurvive.
 
-SBA buys us a few things in this domain. Primarilly, it incorporates data from all correspondences and all lighthouses; something that PNP doesn't really do out of the box. But more importantly, it lets us model the _actual_ parametrics of the lighthouse. The lighthouse is _not_ a pinhole camera, but treating it as one gets you arbitrarilly close. SBA typically will optimize close into the optimal least squares solution. This is going to be important in the long run, paticurally since each lighthouse has factory calibration parameters that are almost certainly easier to reproject than any other approach. 
+SBA buys us a few things in this domain. Primarilly, it incorporates data from all correspondences and all lighthouses; something that PNP doesn't really do out of the box. But more importantly, it lets us model the _actual_ parametrics of the lighthouse. The lighthouse is _not_ a pinhole camera, but treating it as one gets you arbitrarilly close. SBA typically will optimize 'arbitrailly close' into the optimal least squares solution. This is going to be important in the long run, paticurally since each lighthouse has factory calibration parameters that are almost certainly easier to reproject than any other approach. 
 
-The SBA library used here is the [http://users.ics.forth.gr/~lourakis/sba/](one here). Performance wise, since the problem is so small, I haven't implemented a jacobian for the reprojection function -- it runs as fast as it can get light data. If it needs to run on a much slower platform, a jacobian would speed it up substantially. 
+The SBA library used here is the [one here](http://users.ics.forth.gr/~lourakis/sba/). Performance wise, since the measurement sizes are so small -- a maximum of ~50 measurements whereas typical uses of SBA have 50 measurements for each of dozens or hundres of images -- I haven't implemented a jacobian for the reprojection function -- it runs as fast as it can get light data. If it needs to run on a much slower platform, a jacobian would speed it up substantially. 
