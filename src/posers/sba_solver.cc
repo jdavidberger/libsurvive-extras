@@ -372,13 +372,20 @@ int sba_solver_poser_cb(SurviveObject *so, PoserData *pd) {
 		return 0;
 	}
 	case POSERDATA_FULL_SCENE: {
-		auto pdfs = (PoserDataFullScene *)(pd);
+		auto pdfs = (PoserDataFullScene *) (pd);
 		auto config = *survive_calibration_default_config();
 		std::cerr << "Running sba with " << config << std::endl;
 		auto error = run_sba(config, pdfs, so);
 		std::cerr << "Average reproj error: " << error << std::endl;
 		return 0;
 	}
+		default: {
+			auto subposer = config_read_str(so->ctx->global_config_values, "SBASeedPoser", "PoserOpenCV");
+			if(auto driver = (PoserCB)GetDriver(subposer)) {
+				return driver(so, pd);
+			}
+			break;
+		}
 	}
 	return -1;
 }

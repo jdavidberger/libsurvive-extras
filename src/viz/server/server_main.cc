@@ -21,9 +21,9 @@ void send_pose_info(SurviveObject *so, uint8_t lighthouse, SurvivePose *pos) {
 		std::cerr << "Pose at: " << ((double)count * 10) << "hz" << std::endl;
 		count = 0;
 		last_display = now;
-		((SurviveServer *)so->ctx->user_ptr)->send_pose_info(so, lighthouse, &pos->Pos[0], &pos->Rot[0]);
 	}
 	count++;
+    ((SurviveServer *)so->ctx->user_ptr)->send_pose_info(so, lighthouse, &pos->Pos[0], &pos->Rot[0]);
 
 }
 
@@ -43,7 +43,7 @@ int main(int argc, char **argv) {
 
 		init_extras();
 		auto ctx = survive_init(0);
-		ctx->bsd[0].PositionSet = 0;
+		ctx->bsd[0].PositionSet = ctx->bsd[1].PositionSet = 0;
 		ctx->user_ptr = &app;
 		survive_install_raw_pose_fn(ctx, send_pose_info);
 		survive_install_angle_fn(ctx, send_angle_info);
