@@ -11,8 +11,13 @@
   </head>
   <body>
     <div id="ThreeJS" style="z-index: 1; position: absolute; left:0px; top:0px"></div>
-    <div id="cam" style="z-index: 2;border:1px solid white;position:absolute">
-      <canvas width=800 height=800 id="camcanvas"></canvas>
+    <div id="cam-control" style="z-index: 2;border:1px solid white;position:absolute">
+      <button id="toggleBtn">
+        Toggle 2D View
+      </button>
+      <div id="cam" style="display:none">
+        <canvas width=800 height=800 id="camcanvas"></canvas>
+      </div>
     </div>
   </body>
 </html>

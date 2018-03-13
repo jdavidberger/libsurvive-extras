@@ -4,7 +4,7 @@ project(mecbot_server)
 set(CMAKE_CXX_STANDARD 14) 
 
 add_custom_target(run_server
-  COMMAND server  "${CMAKE_CURRENT_SOURCE_DIR}/web" WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+  COMMAND server_main  "${CMAKE_CURRENT_SOURCE_DIR}/web" WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
   )
 
 find_package(Poco COMPONENTS XML Foundation Util Net JSON REQUIRED)

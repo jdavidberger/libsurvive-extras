@@ -43,16 +43,17 @@ var ctx;
 var canvas;
 var oldDrawTime = 0;
 var lastWhen = {};
-function redrawCanvas(when) {
-	if (new Date().getTime() < oldDrawTime + 1000)
-		return;
-	if (lastWhen["TR0"] == when["TR0"])
-		return;
 
+$(function() { $("#toggleBtn").click(function() { $("#cam").toggle(); }); });
+
+function redrawCanvas(when) {
 	oldDrawTime = new Date().getTime();
 	if (!ctx) {
 		canvas = document.getElementById("camcanvas");
 		ctx = canvas.getContext("2d");
+	}
+	if (!$(canvas).is(":visible")) {
+		return true;
 	}
 	ctx.clearRect(0, 0, canvas.width, canvas.height);
 
