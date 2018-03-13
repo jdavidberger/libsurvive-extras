@@ -81,7 +81,7 @@ Typically PNP implementations will also allow you to model radial distortions an
 
 From that, we can turn all of our angles into effective 'pixel' values, and use any off the shelf pnp solver. This repo uses OpenCV's for convience. 
 
-## SBA Solver
+## Sparse Bundle Adjustment Solver
 
 Bundle adjustment is, loosely speaking, an approach that adjusts the position of the object or the lighthouse and simulates where it expects the resulting angle_x, angle_y measurement to be. Its goal is to adjust the pose of the moving peice to minimize the difference between observed data and the simulated data. 
 
