@@ -14,7 +14,7 @@ function add_lighthouse(idx, p, q) {
 		wireframe : true,
 		vertexColor : true,
 		color : 0x111111,
-		opacity : 0.08,
+		opacity : 0.09,
 		transparent : true,
 		blending : THREE.AdditiveBlending,
 		side : THREE.BothSides
@@ -323,7 +323,7 @@ init() {
 	floorTexture.repeat.set(10, 10);
 	// DoubleSide: render texture on both sides of mesh
 	var floorMaterial =
-		new THREE.MeshBasicMaterial({color : 0x111111, opacity : 0.75, transparent : true, side : THREE.FrontSide});
+		new THREE.MeshBasicMaterial({color : 0x000000, opacity : 0.75, transparent : true, side : THREE.FrontSide});
 	var floorGeometry = new THREE.PlaneGeometry(10, 10);
 	var floor = new THREE.Mesh(floorGeometry, floorMaterial);
 	floor.position.z = -1;
@@ -344,7 +344,7 @@ init() {
 	scene.add(skyBox);
 
 	// fog must be added to scene before first render
-	scene.fog = new THREE.FogExp2(0xffffff, 0.025);
+	// scene.fog = new THREE.FogExp2(0xffffff, 0.025);
 }
 
 function animate() {
